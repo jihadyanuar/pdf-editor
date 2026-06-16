@@ -332,6 +332,7 @@ footer { margin-top: 3rem; text-align: center; font-size: 12px; color: var(--mut
 </div>
 
 <!-- Load pdf-lib and PDF.js from CDN (with fallback) -->
+<div id="libStatus" style="display:none;max-width:920px;margin:0 auto 1rem;padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:13px;"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
@@ -363,16 +364,22 @@ let libsReady = Promise.all([
     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
   ], () => typeof window.pdfjsLib !== 'undefined', 'PDF.js')
 ]).then(() => {
+  if (typeof window.pdfjsLib === 'undefined') {
+    throw new Error('PDF.js termuat tapi window.pdfjsLib tidak terdefinisi');
+  }
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  document.getElementById('libStatus').style.display = 'none';
-}).catch(err => {
   const el = document.getElementById('libStatus');
-  el.textContent = '⚠ ' + err.message + ' — periksa koneksi internet, lalu reload halaman ini.';
-  el.style.display = 'block';
-  console.error(err);
+  if (el) el.style.display = 'none';
+}).catch(err => {
+  console.error('libsReady failed:', err);
+  const el = document.getElementById('libStatus');
+  if (el) {
+    el.textContent = '⚠ ' + (err && err.message ? err.message : String(err)) + ' — periksa koneksi internet, lalu reload halaman ini.';
+    el.style.display = 'block';
+  }
+  throw err; // re-throw so downstream .catch(e) blocks still see the real error
 });
 </script>
-<div id="libStatus" style="display:none;max-width:920px;margin:0 auto 1rem;padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:13px;"></div>
 <script>
 // (PDF.js worker is configured inside libsReady.then() above, once the library is confirmed loaded)
 
@@ -420,7 +427,7 @@ function handleImgFiles(files) {
 async function handlePdfFiles(files) {
   const arr = Array.from(files).filter(f => f.type === 'application/pdf');
   if (!arr.length) return;
-  try { await libsReady; } catch(e) { setStatus('Library PDF gagal dimuat: ' + e.message, 'err'); return; }
+  try { await libsReady; } catch(e) { setStatus('Library PDF gagal dimuat: ' + (e && e.message ? e.message : String(e)), 'err'); return; }
   for (const file of arr) {
     setStatus(`Membaca ${file.name}...`);
     try {
@@ -447,7 +454,7 @@ async function handlePdfFiles(files) {
       setStatus('');
       render();
     } catch(e) {
-      setStatus('Gagal baca PDF: ' + e.message, 'err');
+      setStatus('Gagal baca PDF: ' + (e && e.message ? e.message : String(e)), 'err');
     }
   }
 }
@@ -617,7 +624,7 @@ async function exportPDF() {
   document.getElementById('progWrap').style.display = 'block';
   setProgress(0); setStatus('Memuat library PDF...');
   try { await libsReady; } catch(e) {
-    setStatus('Library PDF gagal dimuat: ' + e.message, 'err');
+    setStatus('Library PDF gagal dimuat: ' + (e && e.message ? e.message : String(e)), 'err');
     document.getElementById('progWrap').style.display = 'none';
     btn.disabled = false;
     return;
@@ -740,7 +747,7 @@ async function exportPDF() {
     setProgress(100);
     setStatus(`✓ PDF berhasil diexport! (${pages.length} halaman)`, 'ok');
   } catch(e) {
-    setStatus('Gagal export: '+e.message,'err');
+    setStatus('Gagal export: ' + (e && e.message ? e.message : String(e)), 'err');
     console.error(e);
   }
 
@@ -770,8 +777,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function getBkRange() {
   const total = pages.length;
-  let start = parseInt(document.getElementById('bkStart').value) || 1;
-  let endRaw = document.getElementById('bkEnd').value.trim();
+  const startInput = document.getElementById('bkStart');
+  const endInput = document.getElementById('bkEnd');
+  let start = parseInt(startInput ? startInput.value : '1') || 1;
+  let endRaw = endInput ? endInput.value.trim() : '';
   let end = endRaw === '' ? total : (parseInt(endRaw) || total);
   start = Math.max(1, Math.min(start, total || 1));
   end = Math.max(start, Math.min(end, total || 1));
@@ -780,7 +789,8 @@ function getBkRange() {
 
 function updateBkSummary() {
   const summaryEl = document.getElementById('bkSummary');
-  if (!summaryEl) return;
+  const batchEl = document.getElementById('bkSheetsPerBatch');
+  if (!summaryEl || !batchEl) return;
   const total = pages.length;
   if (!total) { summaryEl.textContent = 'Belum ada halaman.'; return; }
   const { start, end } = getBkRange();
@@ -788,7 +798,7 @@ function updateBkSummary() {
   const padded = Math.ceil(count / 4) * 4;
   const blanks = padded - count;
   const totalSheets = padded / 4;
-  const perBatchVal = parseInt(document.getElementById('bkSheetsPerBatch').value) || 0;
+  const perBatchVal = parseInt(batchEl.value) || 0;
   const perBatch = perBatchVal === 0 ? totalSheets : perBatchVal;
   const numBatches = Math.ceil(totalSheets / perBatch);
 
@@ -818,10 +828,11 @@ async function generateBooklet() {
   if (!pages.length) return;
   const statusEl = document.getElementById('bkStatusMsg');
   const dlWrap = document.getElementById('bkDownloads');
+  if (!statusEl || !dlWrap) { console.error('Booklet panel elements not found in DOM'); return; }
   dlWrap.innerHTML = '';
   statusEl.textContent = 'Memuat library PDF...'; statusEl.className = 'status-msg';
   try { await libsReady; } catch(e) {
-    statusEl.textContent = 'Library PDF gagal dimuat: ' + e.message;
+    statusEl.textContent = 'Library PDF gagal dimuat: ' + (e && e.message ? e.message : String(e));
     statusEl.className = 'status-msg err';
     return;
   }
@@ -868,7 +879,7 @@ async function generateBooklet() {
     statusEl.textContent = `PDF booklet siap! ${sheets.length} lembar A4, ${numBatches} batch. Download tiap file di bawah.`;
     statusEl.className = 'status-msg ok';
   } catch(e) {
-    statusEl.textContent = 'Gagal: ' + e.message;
+    statusEl.textContent = 'Gagal: ' + (e && e.message ? e.message : String(e));
     statusEl.className = 'status-msg err';
     console.error(e);
   }
