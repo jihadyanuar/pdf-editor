@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Editor — Image & PDF Combiner</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f4f1;
+  --surface: #ffffff;
+  --border: #e3e1da;
+  --border-hover: #c8c4ba;
+  --text: #1a1916;
+  --muted: #6b6860;
+  --indigo: #6366f1;
+  --indigo-light: #eef2ff;
+  --indigo-border: #c7d2fe;
+  --success: #15803d;
+  --danger: #b91c1c;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem 1rem 5rem; }
+.container { max-width: 920px; margin: 0 auto; }
+
+/* Header */
+header { margin-bottom: 1.75rem; }
+header h1 { font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
+header p { font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+/* Upload area */
+.upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media(max-width:560px){ .upload-row { grid-template-columns:1fr; } }
+
+.drop-zone {
+  border: 2px dashed var(--border-hover);
+  border-radius: var(--radius);
+  padding: 1.75rem 1.25rem;
+  text-align: center;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color .15s, background .15s;
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--indigo); background: var(--indigo-light); }
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.dz-icon { font-size: 28px; margin-bottom: 8px; }
+.dz-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.dz-sub { font-size: 12px; color: var(--muted); }
+.dz-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; margin-bottom: 8px; }
+.badge-img { background: #dbeafe; color: #1d4ed8; }
+.badge-pdf { background: #fee2e2; color: #b91c1c; }
+
+/* Tabs */
+.tabs-bar { display: flex; align-items: center; gap: 0; border-bottom: 1px solid var(--border); margin-top: 1.75rem; }
+.tab-btn { padding: 9px 18px; font-size: 13px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; margin-bottom: -1px; transition: color .12s, border-color .12s; white-space: nowrap; }
+.tab-btn.active { color: var(--text); border-bottom-color: var(--indigo); }
+.tab-btn:hover:not(.active) { color: var(--text); }
+.tab-count { display: inline-block; background: var(--border); border-radius: 99px; font-size: 10px; padding: 0 5px; margin-left: 4px; color: var(--muted); }
+.tab-btn.active .tab-count { background: var(--indigo-border); color: var(--indigo); }
+.tabs-spacer { flex: 1; }
+.add-more-btn { font-size: 12px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--muted); cursor: pointer; margin-right: 4px; position: relative; overflow: hidden; }
+.add-more-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.add-more-btn:hover { border-color: var(--indigo); color: var(--indigo); background: var(--indigo-light); }
+
+.tab-panel { display: none; padding-top: 1rem; }
+.tab-panel.active { display: block; }
+
+/* Grid view */
+.gallery-controls { display: flex; align-items: center; gap: 10px; padding-top: 1rem; padding-bottom: 0.5rem; }
+.gallery-controls label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.zoom-slider { flex: 1; max-width: 160px; accent-color: var(--indigo); cursor: pointer; }
+.zoom-value { font-size: 12px; color: var(--muted); width: 36px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-size, 200px), 1fr)); gap: 12px; }
+
+.page-card {
+  position: relative; border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  overflow: hidden; background: var(--surface); cursor: grab; user-select: none;
+  transition: box-shadow .12s, border-color .12s;
+}
+.page-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow); }
+.page-card:active { cursor: grabbing; }
+.page-card.dragging { opacity: 0.2; }
+.page-card.drag-over { border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+.page-card.selected { border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+
+.card-thumb { width: 100%; aspect-ratio: 3/4; object-fit: contain; display: block; pointer-events: none; background: #f0f0f0; }
+.card-thumb-wrap { position: relative; overflow: hidden; background: #f0eeea; }
+.card-thumb-canvas { width: 100%; aspect-ratio: 3/4; display: block; background: #f0eeea; object-fit: contain; }
+.card-type-badge { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
+.type-img { background: #dbeafe; color: #1d4ed8; }
+.type-pdf { background: #fee2e2; color: #991b1b; }
+.card-num { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,.65); color: #fff; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; }
+.card-rotate-badge { position: absolute; bottom: 3px; left: 5px; background: rgba(0,0,0,.5); color: #fff; font-size: 9px; border-radius: 3px; padding: 0 4px; display: none; }
+.card-rotate-badge.show { display: block; }
+.card-hover-btns { position: absolute; top: 4px; right: 4px; display: none; flex-direction: column; gap: 3px; }
+.page-card:hover .card-hover-btns { display: flex; }
+.card-hover-btns .hb { width: 22px; height: 22px; border: none; border-radius: 4px; background: rgba(0,0,0,.55); color: #fff; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.hb:hover { background: rgba(80,80,220,.85); }
+.hb.del:hover { background: rgba(185,28,28,.9); }
+
+.card-footer { padding: 5px 7px; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid var(--border); }
+
+/* List / Reorder view */
+.list-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.ltb { font-size: 12px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); color: var(--muted); cursor: pointer; transition: all .1s; }
+.ltb:hover { border-color: var(--indigo); color: var(--indigo); background: var(--indigo-light); }
+.ltb.danger:hover { border-color: #fca5a5; color: var(--danger); background: #fff1f2; }
+.ltb-sep { flex: 1; }
+
+.reorder-list { display: flex; flex-direction: column; gap: 5px; }
+.ri {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 10px;
+  cursor: grab; user-select: none; transition: box-shadow .12s, border-color .12s;
+}
+.ri:hover { border-color: var(--border-hover); box-shadow: var(--shadow); }
+.ri:active { cursor: grabbing; }
+.ri.dragging { opacity: 0.2; }
+.ri.drag-over { border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+.ri-handle { color: var(--muted); font-size: 16px; cursor: grab; flex-shrink: 0; line-height: 1; }
+.ri-thumb-wrap { position: relative; flex-shrink: 0; }
+.ri-thumb { width: 80px; height: 100px; object-fit: contain; border-radius: 3px; display: block; background: #f0eeea; }
+.ri-thumb-canvas { width: 80px; height: 100px; border-radius: 3px; display: block; background: #f0eeea; }
+.ri-type { position: absolute; bottom: 2px; right: 2px; font-size: 8px; font-weight: 700; padding: 1px 3px; border-radius: 2px; }
+.ri-rot-label { position: absolute; top: 2px; left: 2px; font-size: 8px; background: rgba(0,0,0,.5); color: #fff; border-radius: 2px; padding: 0 3px; display: none; }
+.ri-rot-label.show { display: block; }
+.ri-info { flex: 1; min-width: 0; }
+.ri-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ri-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.ri-controls { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.page-num-input { width: 42px; text-align: center; font-size: 13px; padding: 4px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); }
+.page-num-input:focus { outline: none; border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+.rib { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all .1s; }
+.rib:hover:not(:disabled) { background: var(--indigo-light); border-color: var(--indigo); }
+.rib:disabled { opacity: .3; cursor: not-allowed; }
+.rib.del:hover { background: #fee2e2; border-color: #fca5a5; }
+
+/* PDF split panel */
+.split-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.split-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; margin-bottom: .75rem; }
+.split-hint { font-size: 12px; color: var(--muted); margin-bottom: .75rem; line-height: 1.5; }
+.split-range-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.split-range-row input { width: 60px; text-align: center; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.split-range-row input:focus { outline: none; border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+.split-btn { font-size: 13px; padding: 7px 14px; border: 1px solid var(--indigo); border-radius: var(--radius-sm); background: var(--indigo-light); color: var(--indigo); cursor: pointer; font-weight: 500; }
+.split-btn:hover { background: var(--indigo); color: #fff; }
+
+/* Settings panel */
+.panel { margin-top: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+.panel-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; margin-bottom: 1rem; }
+.opts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media(max-width:500px){ .opts-grid { grid-template-columns:1fr; } }
+.field label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 5px; }
+.field select, .field input[type=text] { width: 100%; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); appearance: none; }
+.field select:focus, .field input:focus { outline: none; border-color: var(--indigo); box-shadow: 0 0 0 2px var(--indigo-border); }
+
+.prog-wrap { margin-top: 12px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; display: none; }
+.prog-fill { height: 100%; width: 0%; background: var(--indigo); transition: width .2s; }
+.actions { margin-top: 1.25rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn-main { background: var(--text); color: #fff; border: none; border-radius: var(--radius-sm); padding: 10px 24px; font-size: 15px; font-weight: 500; cursor: pointer; transition: opacity .15s; }
+.btn-main:hover:not(:disabled) { opacity: .8; }
+.btn-main:disabled { opacity: .4; cursor: not-allowed; }
+.btn-ghost { background: none; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 18px; font-size: 14px; cursor: pointer; }
+.btn-ghost:hover { background: var(--bg); }
+.status-msg { font-size: 13px; color: var(--muted); }
+.status-msg.ok { color: var(--success); }
+.status-msg.err { color: var(--danger); }
+
+/* Empty state */
+.empty { text-align: center; padding: 3rem 1rem; color: var(--muted); font-size: 14px; }
+.empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+/* Loading overlay on card */
+.card-loading { position: absolute; inset: 0; background: rgba(255,255,255,.7); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+
+footer { margin-top: 3rem; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>PDF Editor</h1>
+    <p>Upload gambar & PDF, reorder halaman, rotate, hapus — lalu export jadi satu PDF.</p>
+  </header>
+
+  <!-- Upload row -->
+  <div class="upload-row">
+    <div class="drop-zone" id="dzImg">
+      <input type="file" id="fileImg" multiple accept="image/*">
+      <div class="dz-badge badge-img">GAMBAR</div>
+      <div class="dz-icon">🖼️</div>
+      <div class="dz-title">Upload Gambar</div>
+      <div class="dz-sub">JPG · PNG · WEBP · GIF</div>
+    </div>
+    <div class="drop-zone" id="dzPdf">
+      <input type="file" id="filePdf" multiple accept="application/pdf">
+      <div class="dz-badge badge-pdf">PDF</div>
+      <div class="dz-icon">📄</div>
+      <div class="dz-title">Upload PDF</div>
+      <div class="dz-sub">Semua halaman akan diimport</div>
+    </div>
+  </div>
+
+  <!-- Main editor (hidden until content) -->
+  <div id="editorSection" style="display:none">
+    <div class="tabs-bar">
+      <button class="tab-btn active" onclick="switchTab('grid')">Grid <span class="tab-count" id="cntGrid">0</span></button>
+      <button class="tab-btn" onclick="switchTab('list')">Reorder &amp; Edit <span class="tab-count" id="cntList">0</span></button>
+      <div class="tabs-spacer"></div>
+      <label class="add-more-btn">+ Tambah Gambar <input type="file" multiple accept="image/*" onchange="handleImgFiles(this.files);this.value=''"></label>
+      <label class="add-more-btn">+ Tambah PDF <input type="file" multiple accept="application/pdf" onchange="handlePdfFiles(this.files);this.value=''"></label>
+    </div>
+
+    <!-- Grid tab -->
+    <div class="tab-panel active" id="tabGrid">
+      <div class="gallery-controls">
+        <label>Ukuran preview:</label>
+        <input type="range" class="zoom-slider" id="zoomSlider" min="150" max="420" value="220" step="10" oninput="onZoom(this.value)">
+        <span class="zoom-value" id="zoomVal">220px</span>
+      </div>
+      <div class="gallery" id="gallery" style="--card-size:220px"></div>
+    </div>
+
+    <!-- Reorder tab -->
+    <div class="tab-panel" id="tabList">
+      <div class="list-toolbar">
+        <button class="ltb" onclick="sortByName()">↕ Sort A–Z</button>
+        <button class="ltb" onclick="reverseAll()">⇅ Balik urutan</button>
+        <button class="ltb" onclick="rotateAll(90)">↻ Rotate semua +90°</button>
+        <div class="ltb-sep"></div>
+        <button class="ltb danger" onclick="clearAll()">✕ Hapus semua</button>
+      </div>
+      <div class="reorder-list" id="reorderList"></div>
+    </div>
+
+    <!-- Settings & Export -->
+    <div class="panel">
+      <div class="panel-title">Pengaturan Export</div>
+      <div class="opts-grid">
+        <div class="field">
+          <label>Ukuran halaman</label>
+          <select id="pageSize">
+            <option value="original">Sesuai konten asli</option>
+            <option value="a4">A4 (210 × 297 mm)</option>
+            <option value="letter">Letter (8.5 × 11 in)</option>
+            <option value="a3">A3 (297 × 420 mm)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Orientasi (khusus mode A4/Letter/A3)</label>
+          <select id="orientation">
+            <option value="auto">Auto (mengikuti konten)</option>
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Margin (khusus mode A4/Letter/A3)</label>
+          <select id="margin">
+            <option value="0">Tanpa margin</option>
+            <option value="20" selected>Kecil (20 pt)</option>
+            <option value="40">Sedang (40 pt)</option>
+            <option value="60">Besar (60 pt)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nama file output</label>
+          <input type="text" id="fileName" value="dokumen-saya" placeholder="nama-file">
+        </div>
+      </div>
+      <div class="prog-wrap" id="progWrap"><div class="prog-fill" id="progFill"></div></div>
+      <div class="actions">
+        <button class="btn-main" id="exportBtn" onclick="exportPDF()">⬇ Export PDF</button>
+        <button class="btn-ghost" onclick="clearAll()">Hapus semua</button>
+        <span class="status-msg" id="statusMsg"></span>
+      </div>
+    </div>
+
+    <!-- Booklet Print panel -->
+    <div class="panel">
+      <div class="panel-title">📖 Print Booklet (A5 di kertas A4)</div>
+      <p class="split-hint">
+        Susun ulang halaman jadi format booklet A5 — 2 halaman A5 per sisi kertas A4.
+        Print sisi depan dulu, balik kertasnya secara manual di printer, lalu print sisi belakang.
+        Setelah dilipat & distaples di tengah, jadi buku A5 dengan urutan halaman yang benar.
+      </p>
+      <div class="opts-grid" style="margin-bottom:.9rem">
+        <div class="field">
+          <label>Halaman mulai</label>
+          <input type="text" id="bkStart" value="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>Halaman akhir</label>
+          <input type="text" id="bkEnd" value="" inputmode="numeric" placeholder="otomatis = total halaman">
+        </div>
+      </div>
+      <div class="opts-grid" style="margin-bottom:.9rem">
+        <div class="field">
+          <label>Lembar A4 per batch cetak</label>
+          <select id="bkSheetsPerBatch">
+            <option value="0" selected>Semua jadi 1 batch (rekomendasi)</option>
+            <option value="1">1 lembar / batch</option>
+            <option value="2">2 lembar / batch</option>
+            <option value="4">4 lembar / batch</option>
+            <option value="8">8 lembar / batch</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nama file booklet</label>
+          <input type="text" id="bkFileName" value="booklet" placeholder="booklet">
+        </div>
+      </div>
+      <div id="bkSummary" style="font-size:12px;color:var(--muted);margin-bottom:.75rem;line-height:1.6;"></div>
+      <div class="actions">
+        <button class="split-btn" onclick="generateBooklet()">📖 Generate Booklet PDF</button>
+        <span class="status-msg" id="bkStatusMsg"></span>
+      </div>
+      <div id="bkDownloads" style="margin-top:.75rem;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+  </div>
+
+  <footer>Semua proses terjadi lokal di browser — tidak ada data yang dikirim ke server.</footer>
+</div>
+
+<!-- Load pdf-lib and PDF.js from CDN (with fallback) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+// Fallback loader: if primary CDN failed (blocked/offline), try alternates
+function loadScriptFallback(urls, checkFn, label) {
+  return new Promise((resolve, reject) => {
+    if (checkFn()) { resolve(); return; }
+    let i = 0;
+    function tryNext() {
+      if (checkFn()) { resolve(); return; }
+      if (i >= urls.length) { reject(new Error(label + ' gagal dimuat dari semua sumber CDN')); return; }
+      const s = document.createElement('script');
+      s.src = urls[i++];
+      s.onload = () => { if (checkFn()) resolve(); else tryNext(); };
+      s.onerror = tryNext;
+      document.head.appendChild(s);
+    }
+    tryNext();
+  });
+}
+
+let libsReady = Promise.all([
+  loadScriptFallback([
+    'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js',
+    'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'
+  ], () => typeof window.PDFLib !== 'undefined', 'pdf-lib'),
+  loadScriptFallback([
+    'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js',
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
+  ], () => typeof window.pdfjsLib !== 'undefined', 'PDF.js')
+]).then(() => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  document.getElementById('libStatus').style.display = 'none';
+}).catch(err => {
+  const el = document.getElementById('libStatus');
+  el.textContent = '⚠ ' + err.message + ' — periksa koneksi internet, lalu reload halaman ini.';
+  el.style.display = 'block';
+  console.error(err);
+});
+</script>
+<div id="libStatus" style="display:none;max-width:920px;margin:0 auto 1rem;padding:10px 14px;background:#fee2e2;color:#991b1b;border-radius:8px;font-size:13px;"></div>
+<script>
+// (PDF.js worker is configured inside libsReady.then() above, once the library is confirmed loaded)
+
+// ─── State ───────────────────────────────────────────────────
+// page: { type:'img'|'pdf', src, name, rotate, pdfBytes, pdfPageIndex, w, h }
+let pages = [];
+let activeTab = 'grid';
+let gDragSrc = null, lDragSrc = null;
+
+// ─── Drop zones ───────────────────────────────────────────────
+function setupDz(dzId, inputId, handler) {
+  const dz = document.getElementById(dzId);
+  const inp = document.getElementById(inputId);
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', e => { if (!dz.contains(e.relatedTarget)) dz.classList.remove('dragover'); });
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handler(e.dataTransfer.files); });
+  inp.addEventListener('change', e => { handler(e.target.files); e.target.value = ''; });
+}
+setupDz('dzImg', 'fileImg', handleImgFiles);
+setupDz('dzPdf', 'filePdf', handlePdfFiles);
+
+// ─── Handle image uploads ─────────────────────────────────────
+function handleImgFiles(files) {
+  const arr = Array.from(files).filter(f => f.type.startsWith('image/'));
+  if (!arr.length) return;
+  // Sort ascending by filename (numeric-aware) before loading
+  arr.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  let pending = arr.length;
+  const buffer = new Array(arr.length); // hold results in order despite async reads
+  arr.forEach((file, idx) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        buffer[idx] = { type:'img', src: ev.target.result, name: file.name, rotate: 0, w: img.naturalWidth, h: img.naturalHeight };
+        if (--pending === 0) { pages.push(...buffer); render(); }
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── Handle PDF uploads ───────────────────────────────────────
+async function handlePdfFiles(files) {
+  const arr = Array.from(files).filter(f => f.type === 'application/pdf');
+  if (!arr.length) return;
+  try { await libsReady; } catch(e) { setStatus('Library PDF gagal dimuat: ' + e.message, 'err'); return; }
+  for (const file of arr) {
+    setStatus(`Membaca ${file.name}...`);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdfBytes = new Uint8Array(arrayBuffer);
+      // Use PDF.js to get page count and render previews
+      const pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
+      const numPages = pdfDoc.numPages;
+      for (let pi = 1; pi <= numPages; pi++) {
+        const pdfPage = await pdfDoc.getPage(pi);
+        const vp = pdfPage.getViewport({ scale: 1 });
+        pages.push({
+          type: 'pdf',
+          name: `${file.name} (hal. ${pi})`,
+          rotate: 0,
+          pdfBytes: pdfBytes,
+          pdfPageIndex: pi - 1, // 0-based for pdf-lib
+          pdfJsPage: pdfPage,
+          w: vp.width,
+          h: vp.height,
+          src: null, // will be rendered as canvas
+        });
+      }
+      setStatus('');
+      render();
+    } catch(e) {
+      setStatus('Gagal baca PDF: ' + e.message, 'err');
+    }
+  }
+}
+
+// ─── Render PDF page to canvas element ───────────────────────
+async function renderPdfThumb(page, canvas, scale) {
+  try {
+    const vp = page.pdfJsPage.getViewport({ scale: scale || 0.3 });
+    canvas.width = vp.width;
+    canvas.height = vp.height;
+    await page.pdfJsPage.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    // Apply rotation visually
+    if (page.rotate) {
+      canvas.style.transform = `rotate(${page.rotate}deg)`;
+    } else {
+      canvas.style.transform = '';
+    }
+  } catch(e) { /* ignore */ }
+}
+
+// ─── Tab switch ───────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='grid')||(i===1&&tab==='list')));
+  document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', (i===0&&tab==='grid')||(i===1&&tab==='list')));
+  if (tab==='list') renderList(); else renderGrid();
+}
+
+// ─── Master render ────────────────────────────────────────────
+function render() {
+  const show = pages.length > 0;
+  document.getElementById('editorSection').style.display = show ? 'block' : 'none';
+  document.getElementById('cntGrid').textContent = pages.length;
+  document.getElementById('cntList').textContent = pages.length;
+  setStatus('');
+  if (activeTab === 'grid') renderGrid(); else renderList();
+  if (typeof updateBkSummary === 'function') updateBkSummary();
+}
+
+// ─── Grid view ────────────────────────────────────────────────
+function renderGrid() {
+  const gallery = document.getElementById('gallery');
+  gallery.innerHTML = '';
+  if (!pages.length) { gallery.innerHTML = '<div class="empty"><div class="empty-icon">📂</div>Belum ada halaman. Upload gambar atau PDF di atas.</div>'; return; }
+
+  pages.forEach((pg, i) => {
+    const card = document.createElement('div');
+    card.className = 'page-card';
+    card.draggable = true;
+
+    const isImg = pg.type === 'img';
+    const thumbContent = isImg
+      ? `<img class="card-thumb" src="${pg.src}" alt="${pg.name}" style="transform:rotate(${pg.rotate}deg)">`
+      : `<canvas class="card-thumb-canvas" id="gthumb-${i}"></canvas>`;
+
+    card.innerHTML = `
+      <div class="card-thumb-wrap">
+        ${thumbContent}
+        <span class="card-num">${i+1}</span>
+        <span class="card-type-badge ${isImg?'type-img':'type-pdf'}">${isImg?'IMG':'PDF'}</span>
+        <span class="card-rotate-badge${pg.rotate?' show':''}">${pg.rotate}°</span>
+        <div class="card-hover-btns">
+          <button class="hb" onclick="rotPage(${i},-90)" title="↺ -90°">↺</button>
+          <button class="hb" onclick="rotPage(${i},90)" title="↻ +90°">↻</button>
+          <button class="hb del" onclick="delPage(${i})" title="Hapus">✕</button>
+        </div>
+      </div>
+      <div class="card-footer">${pg.name}</div>
+    `;
+
+    card.addEventListener('dragstart', () => { gDragSrc = i; setTimeout(() => card.classList.add('dragging'), 0); });
+    card.addEventListener('dragend', () => { card.classList.remove('dragging'); gallery.querySelectorAll('.page-card').forEach(c=>c.classList.remove('drag-over')); });
+    card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault(); card.classList.remove('drag-over');
+      if (gDragSrc===null||gDragSrc===i) return;
+      const mv = pages.splice(gDragSrc,1)[0]; pages.splice(i,0,mv);
+      gDragSrc=null; render();
+    });
+    gallery.appendChild(card);
+
+    if (!isImg) {
+      const canvas = document.getElementById(`gthumb-${i}`);
+      if (canvas) renderPdfThumb(pg, canvas, 0.7);
+    }
+  });
+}
+
+// ─── List view ────────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('reorderList');
+  list.innerHTML = '';
+  if (!pages.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📂</div>Belum ada halaman.</div>'; return; }
+
+  pages.forEach((pg, i) => {
+    const isImg = pg.type === 'img';
+    const item = document.createElement('div');
+    item.className = 'ri';
+    item.draggable = true;
+
+    const thumbHtml = isImg
+      ? `<img class="ri-thumb" src="${pg.src}" style="transform:rotate(${pg.rotate}deg)">`
+      : `<canvas class="ri-thumb-canvas" id="lthumb-${i}"></canvas>`;
+
+    item.innerHTML = `
+      <span class="ri-handle">⠿</span>
+      <div class="ri-thumb-wrap">
+        ${thumbHtml}
+        <span class="ri-type ${isImg?'type-img':'type-pdf'}">${isImg?'IMG':'PDF'}</span>
+        <span class="ri-rot-label${pg.rotate?' show':''}">${pg.rotate}°</span>
+      </div>
+      <div class="ri-info">
+        <div class="ri-name">${pg.name}</div>
+        <div class="ri-meta">Halaman ${i+1} dari ${pages.length}${pg.type==='pdf'?' · PDF page ':' · '}</div>
+      </div>
+      <div class="ri-controls">
+        <span style="font-size:11px;color:var(--muted)">Hal.</span>
+        <input class="page-num-input" type="number" min="1" max="${pages.length}" value="${i+1}" onchange="moveToPage(${i},this.value-1)">
+        <button class="rib" onclick="moveUp(${i})" ${i===0?'disabled':''} title="Naik">↑</button>
+        <button class="rib" onclick="moveDown(${i})" ${i===pages.length-1?'disabled':''} title="Turun">↓</button>
+        <button class="rib" onclick="rotPage(${i},-90)" title="↺">↺</button>
+        <button class="rib" onclick="rotPage(${i},90)" title="↻">↻</button>
+        <button class="rib del" onclick="delPage(${i})" title="Hapus">✕</button>
+      </div>
+    `;
+
+    item.addEventListener('dragstart', () => { lDragSrc=i; setTimeout(()=>item.classList.add('dragging'),0); });
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); list.querySelectorAll('.ri').forEach(c=>c.classList.remove('drag-over')); });
+    item.addEventListener('dragover', e => { e.preventDefault(); item.classList.add('drag-over'); });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', e => {
+      e.preventDefault(); item.classList.remove('drag-over');
+      if (lDragSrc===null||lDragSrc===i) return;
+      const mv=pages.splice(lDragSrc,1)[0]; pages.splice(i,0,mv);
+      lDragSrc=null; render();
+    });
+    list.appendChild(item);
+
+    if (!isImg) {
+      const canvas = document.getElementById(`lthumb-${i}`);
+      if (canvas) renderPdfThumb(pg, canvas, 0.5);
+    }
+  });
+}
+
+// ─── Page actions ─────────────────────────────────────────────
+function delPage(i) { pages.splice(i,1); render(); }
+function clearAll() { pages=[]; render(); }
+function rotPage(i, deg) { pages[i].rotate = ((pages[i].rotate+deg)%360+360)%360; render(); }
+function rotateAll(deg) { pages.forEach(p=>{ p.rotate=((p.rotate+deg)%360+360)%360; }); render(); }
+function moveUp(i) { if(i===0)return; [pages[i-1],pages[i]]=[pages[i],pages[i-1]]; render(); }
+function moveDown(i) { if(i===pages.length-1)return; [pages[i],pages[i+1]]=[pages[i+1],pages[i]]; render(); }
+function moveToPage(from, to) { to=Math.max(0,Math.min(pages.length-1,parseInt(to))); if(isNaN(to)||from===to){render();return;} const mv=pages.splice(from,1)[0]; pages.splice(to,0,mv); render(); }
+function sortByName() { pages.sort((a,b)=>a.name.localeCompare(b.name)); render(); }
+function reverseAll() { pages.reverse(); render(); }
+
+// ─── Status ───────────────────────────────────────────────────
+function setStatus(msg,type) { const el=document.getElementById('statusMsg'); el.textContent=msg; el.className='status-msg'+(type?' '+type:''); }
+function setProgress(pct) { document.getElementById('progFill').style.width=pct+'%'; }
+
+// ─── Export PDF using pdf-lib ─────────────────────────────────
+async function exportPDF() {
+  if (!pages.length) return;
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true;
+  document.getElementById('progWrap').style.display = 'block';
+  setProgress(0); setStatus('Memuat library PDF...');
+  try { await libsReady; } catch(e) {
+    setStatus('Library PDF gagal dimuat: ' + e.message, 'err');
+    document.getElementById('progWrap').style.display = 'none';
+    btn.disabled = false;
+    return;
+  }
+  setStatus('Menyiapkan...');
+
+  const PAGE_PTS = { a4:[595.28,841.89], a3:[841.89,1190.55], letter:[612,792] };
+  const pageSize = document.getElementById('pageSize').value;
+  const orientPref = document.getElementById('orientation').value;
+  const margin = parseInt(document.getElementById('margin').value);
+  const rawName = document.getElementById('fileName').value.trim()||'dokumen-saya';
+  const fileName = rawName.replace(/\.pdf$/i,'')+'.pdf';
+
+  try {
+    const { PDFDocument, degrees } = PDFLib;
+    const outDoc = await PDFDocument.create();
+
+    for (let i=0; i<pages.length; i++) {
+      setProgress(Math.round((i/pages.length)*90));
+      setStatus(`Memproses halaman ${i+1} dari ${pages.length}...`);
+      await new Promise(r=>setTimeout(r,5));
+
+      const pg = pages[i];
+      const rotate = pg.rotate || 0;
+
+      if (pg.type === 'img') {
+        // Load image into pdf-lib
+        let imgEmbed;
+        const src = pg.src;
+        if (src.startsWith('data:image/png')) {
+          // Convert to jpeg via canvas to ensure compatibility
+          const imgEl = await loadImageEl(src);
+          const sw = rotate===90||rotate===270 ? imgEl.naturalHeight : imgEl.naturalWidth;
+          const sh = rotate===90||rotate===270 ? imgEl.naturalWidth : imgEl.naturalHeight;
+          const cv = document.createElement('canvas'); cv.width=sw; cv.height=sh;
+          const ctx=cv.getContext('2d');
+          ctx.translate(sw/2,sh/2); ctx.rotate(rotate*Math.PI/180);
+          ctx.drawImage(imgEl,-imgEl.naturalWidth/2,-imgEl.naturalHeight/2);
+          const jpegBytes = await fetch(cv.toDataURL('image/jpeg',0.92)).then(r=>r.arrayBuffer());
+          imgEmbed = await outDoc.embedJpg(jpegBytes);
+        } else {
+          // Draw rotated image via canvas
+          const imgEl = await loadImageEl(src);
+          const sw = rotate===90||rotate===270 ? imgEl.naturalHeight : imgEl.naturalWidth;
+          const sh = rotate===90||rotate===270 ? imgEl.naturalWidth : imgEl.naturalHeight;
+          const cv = document.createElement('canvas'); cv.width=sw; cv.height=sh;
+          const ctx=cv.getContext('2d');
+          ctx.translate(sw/2,sh/2); ctx.rotate(rotate*Math.PI/180);
+          ctx.drawImage(imgEl,-imgEl.naturalWidth/2,-imgEl.naturalHeight/2);
+          const jpegBytes = await fetch(cv.toDataURL('image/jpeg',0.92)).then(r=>r.arrayBuffer());
+          imgEmbed = await outDoc.embedJpg(jpegBytes);
+        }
+
+        const iw = imgEmbed.width, ih = imgEmbed.height;
+        let pw, ph;
+        if (pageSize==='original') { pw=iw*0.75; ph=ih*0.75; }
+        else {
+          [pw,ph]=PAGE_PTS[pageSize]||PAGE_PTS.a4;
+          let o = orientPref==='auto'?(iw>ih?'l':'p'):(orientPref==='landscape'?'l':'p');
+          if (o==='l') [pw,ph]=[ph,pw];
+        }
+        const newPage = outDoc.addPage([pw, ph]);
+        if (pageSize==='original') {
+          newPage.drawImage(imgEmbed,{x:0,y:0,width:pw,height:ph});
+        } else {
+          const avW=pw-margin*2, avH=ph-margin*2;
+          const scale=Math.min(avW/iw,avH/ih);
+          const dw=iw*scale,dh=ih*scale;
+          const dx=margin+(avW-dw)/2, dy=margin+(avH-dh)/2;
+          newPage.drawImage(imgEmbed,{x:dx,y:dy,width:dw,height:dh});
+        }
+
+      } else {
+        // PDF page — use pdf-lib to copy
+        const srcDoc = await PDFDocument.load(pg.pdfBytes);
+        const [copied] = await outDoc.copyPages(srcDoc, [pg.pdfPageIndex]);
+
+        // Apply rotation
+        if (rotate !== 0) {
+          const curRot = copied.getRotation().angle;
+          copied.setRotation(degrees((curRot + rotate) % 360));
+        }
+
+        // Resize if needed
+        if (pageSize !== 'original') {
+          const { width: ow, height: oh } = copied.getSize();
+          let pw, ph;
+          [pw,ph] = PAGE_PTS[pageSize]||PAGE_PTS.a4;
+          const o = orientPref==='auto'?(ow>oh?'l':'p'):(orientPref==='landscape'?'l':'p');
+          if (o==='l') [pw,ph]=[ph,pw];
+
+          // Embed current page as XObject and redraw at new size
+          const tempDoc = await PDFDocument.create();
+          const [tempPage] = await tempDoc.copyPages(srcDoc, [pg.pdfPageIndex]);
+          tempDoc.addPage(tempPage);
+          const tempBytes = await tempDoc.save();
+          const embDoc = await PDFDocument.load(tempBytes);
+          const [embPage] = await outDoc.embedPdf(embDoc,[0]);
+          const newPage = outDoc.addPage([pw,ph]);
+          const avW=pw-margin*2,avH=ph-margin*2;
+          const scale=Math.min(avW/ow,avH/oh);
+          const dw=ow*scale,dh=oh*scale;
+          const dx=margin+(avW-dw)/2,dy=margin+(avH-dh)/2;
+          newPage.drawPage(embPage,{x:dx,y:dy,width:dw,height:dh,rotate:degrees(rotate)});
+        } else {
+          outDoc.addPage(copied);
+        }
+      }
+    }
+
+    setProgress(98); setStatus('Membuat file...');
+    const pdfBytes = await outDoc.save();
+    const blob = new Blob([pdfBytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
+
+    setProgress(100);
+    setStatus(`✓ PDF berhasil diexport! (${pages.length} halaman)`, 'ok');
+  } catch(e) {
+    setStatus('Gagal export: '+e.message,'err');
+    console.error(e);
+  }
+
+  document.getElementById('progWrap').style.display='none';
+  btn.disabled=false;
+}
+
+
+// ─── Zoom control ─────────────────────────────────────────────
+function onZoom(val) {
+  document.getElementById('gallery').style.setProperty('--card-size', val + 'px');
+  document.getElementById('zoomVal').textContent = val + 'px';
+}
+
+function loadImageEl(src) {
+  return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; });
+}
+
+// ─── Booklet (A5 saddle-stitch on A4) ──────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  ['bkStart','bkEnd','bkSheetsPerBatch'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateBkSummary);
+  });
+  updateBkSummary();
+});
+
+function getBkRange() {
+  const total = pages.length;
+  let start = parseInt(document.getElementById('bkStart').value) || 1;
+  let endRaw = document.getElementById('bkEnd').value.trim();
+  let end = endRaw === '' ? total : (parseInt(endRaw) || total);
+  start = Math.max(1, Math.min(start, total || 1));
+  end = Math.max(start, Math.min(end, total || 1));
+  return { start, end };
+}
+
+function updateBkSummary() {
+  const summaryEl = document.getElementById('bkSummary');
+  if (!summaryEl) return;
+  const total = pages.length;
+  if (!total) { summaryEl.textContent = 'Belum ada halaman.'; return; }
+  const { start, end } = getBkRange();
+  const count = end - start + 1;
+  const padded = Math.ceil(count / 4) * 4;
+  const blanks = padded - count;
+  const totalSheets = padded / 4;
+  const perBatchVal = parseInt(document.getElementById('bkSheetsPerBatch').value) || 0;
+  const perBatch = perBatchVal === 0 ? totalSheets : perBatchVal;
+  const numBatches = Math.ceil(totalSheets / perBatch);
+
+  summaryEl.innerHTML =
+    `Halaman dipilih: <b>${count}</b> (hal. ${start}` + `&ndash;` + `${end})` +
+    (blanks > 0 ? ` + ${blanks} halaman kosong (agar pas kelipatan 4) = <b>${padded}</b> total` : '') +
+    `<br>Total lembar A4: <b>${totalSheets}</b> lembar` + ` &rarr; ` + `dibagi jadi <b>${numBatches} batch</b> cetak` +
+    `<br>Tiap batch hasilkan 2 file: <b>Sisi-A (depan)</b> dan <b>Sisi-B (belakang)</b>.`;
+}
+
+// pageNums: 1-indexed array, length multiple of 4 (0 = blank slot)
+// Standard saddle-stitch imposition: outermost sheet gets first & last page
+function computeImposition(pageNums) {
+  const n = pageNums.length;
+  const sheets = [];
+  let lo = 0, hi = n - 1;
+  while (lo < hi) {
+    const front = [pageNums[hi], pageNums[lo]];
+    const back  = [pageNums[lo+1], pageNums[hi-1]];
+    sheets.push({ front, back });
+    lo += 2; hi -= 2;
+  }
+  return sheets;
+}
+
+async function generateBooklet() {
+  if (!pages.length) return;
+  const statusEl = document.getElementById('bkStatusMsg');
+  const dlWrap = document.getElementById('bkDownloads');
+  dlWrap.innerHTML = '';
+  statusEl.textContent = 'Memuat library PDF...'; statusEl.className = 'status-msg';
+  try { await libsReady; } catch(e) {
+    statusEl.textContent = 'Library PDF gagal dimuat: ' + e.message;
+    statusEl.className = 'status-msg err';
+    return;
+  }
+  statusEl.textContent = 'Menyusun booklet...'; statusEl.className = 'status-msg';
+
+  try {
+    const { start, end } = getBkRange();
+    const selected = [];
+    for (let p = start; p <= end; p++) selected.push(p);
+
+    const padded = Math.ceil(selected.length / 4) * 4;
+    while (selected.length < padded) selected.push(0);
+
+    const sheets = computeImposition(selected);
+    const perBatchVal = parseInt(document.getElementById('bkSheetsPerBatch').value) || 0;
+    const perBatch = perBatchVal === 0 ? sheets.length : perBatchVal;
+    const rawName = (document.getElementById('bkFileName').value.trim() || 'booklet');
+
+    const { PDFDocument } = PDFLib;
+    const numBatches = Math.ceil(sheets.length / perBatch);
+
+    for (let b = 0; b < numBatches; b++) {
+      const batchSheets = sheets.slice(b * perBatch, (b + 1) * perBatch);
+      statusEl.textContent = `Membuat batch ${b+1} dari ${numBatches}...`;
+
+      const frontDoc = await PDFDocument.create();
+      const backDoc = await PDFDocument.create();
+
+      for (const sheet of batchSheets) {
+        await addImpositionPage(frontDoc, sheet.front);
+        await addImpositionPage(backDoc, sheet.back);
+      }
+
+      const frontBytes = await frontDoc.save();
+      const backBytes = await backDoc.save();
+      const frontBlob = new Blob([frontBytes], {type:'application/pdf'});
+      const backBlob = new Blob([backBytes], {type:'application/pdf'});
+
+      const batchLabel = numBatches > 1 ? `-batch${b+1}` : '';
+      addDownloadLink(dlWrap, `${rawName}${batchLabel}-A-depan.pdf`, frontBlob, `Batch ${b+1}: Sisi A (Depan) — ${batchSheets.length} lembar`);
+      addDownloadLink(dlWrap, `${rawName}${batchLabel}-B-belakang.pdf`, backBlob, `Batch ${b+1}: Sisi B (Belakang) — print setelah balik kertas`);
+    }
+
+    statusEl.textContent = `PDF booklet siap! ${sheets.length} lembar A4, ${numBatches} batch. Download tiap file di bawah.`;
+    statusEl.className = 'status-msg ok';
+  } catch(e) {
+    statusEl.textContent = 'Gagal: ' + e.message;
+    statusEl.className = 'status-msg err';
+    console.error(e);
+  }
+}
+
+// One A4-landscape sheet split into two A5-portrait halves for [leftSlotPageNum, rightSlotPageNum]
+async function addImpositionPage(doc, pairPageNums) {
+  const { PDFDocument, degrees } = PDFLib;
+  const pageW = 841.89, pageH = 595.28; // A4 landscape physical sheet
+  const halfW = pageW / 2;
+
+  const newPage = doc.addPage([pageW, pageH]);
+
+  for (let slot = 0; slot < 2; slot++) {
+    const pageNum = pairPageNums[slot];
+    const xOffset = slot * halfW;
+    if (!pageNum || pageNum < 1 || pageNum > pages.length) continue;
+
+    const pg = pages[pageNum - 1];
+    const rotate = pg.rotate || 0;
+
+    if (pg.type === 'img') {
+      const imgEl = await loadImageEl(pg.src);
+      const sw = rotate===90||rotate===270 ? imgEl.naturalHeight : imgEl.naturalWidth;
+      const sh = rotate===90||rotate===270 ? imgEl.naturalWidth : imgEl.naturalHeight;
+      const cv = document.createElement('canvas'); cv.width=sw; cv.height=sh;
+      const ctx=cv.getContext('2d');
+      ctx.translate(sw/2,sh/2); ctx.rotate(rotate*Math.PI/180);
+      ctx.drawImage(imgEl,-imgEl.naturalWidth/2,-imgEl.naturalHeight/2);
+      const jpegBytes = await fetch(cv.toDataURL('image/jpeg',0.92)).then(r=>r.arrayBuffer());
+      const embImg = await doc.embedJpg(jpegBytes);
+      const iw = embImg.width, ih = embImg.height;
+      const scale = Math.min(halfW/iw, pageH/ih);
+      const dw = iw*scale, dh = ih*scale;
+      const dx = xOffset + (halfW-dw)/2, dy = (pageH-dh)/2;
+      newPage.drawImage(embImg, { x: dx, y: dy, width: dw, height: dh });
+    } else {
+      const srcDoc = await PDFDocument.load(pg.pdfBytes);
+      const tempDoc = await PDFDocument.create();
+      const [tempPage] = await tempDoc.copyPages(srcDoc, [pg.pdfPageIndex]);
+      tempDoc.addPage(tempPage);
+      const tempBytes = await tempDoc.save();
+      const embDoc = await PDFDocument.load(tempBytes);
+      const [embPage] = await doc.embedPdf(embDoc, [0]);
+      const ow = embPage.width, oh = embPage.height;
+      const swapped = rotate === 90 || rotate === 270;
+      const ew = swapped ? oh : ow, eh = swapped ? ow : oh;
+      const scale = Math.min(halfW/ew, pageH/eh);
+      const dw = ew*scale, dh = eh*scale;
+      const dx = xOffset + (halfW-dw)/2, dy = (pageH-dh)/2;
+      newPage.drawPage(embPage, { x: dx, y: dy, width: dw, height: dh, rotate: degrees(rotate) });
+    }
+  }
+}
+
+function addDownloadLink(container, filename, blob, label) {
+  const url = URL.createObjectURL(blob);
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;';
+  row.innerHTML = `
+    <span style="font-size:12px;flex:1;color:var(--text);">${label}</span>
+    <a href="${url}" download="${filename}" style="font-size:12px;padding:5px 12px;border-radius:99px;background:var(--indigo);color:#fff;text-decoration:none;font-weight:500;">Download</a>
+  `;
+  container.appendChild(row);
+}
+</script>
+</body>
+</html>
